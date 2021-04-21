@@ -1,5 +1,6 @@
 const { JWT_SECRET } = require("../secrets"); // use this secret!
 const User = require("../users/users-model");
+const jwt = require('jsonwebtoken');
 
 const restricted = async (req, res, next) => {
   /*
@@ -17,6 +18,21 @@ const restricted = async (req, res, next) => {
 
     Put the decoded token in the req object, to make life easier for middlewares downstream!
   */
+  const token = req.headers.authorization;
+  if (!token) {
+    next({ status:401, message: 'Token required'});
+  }
+  else {
+    jwt.verify(token, JWT_SECRET, (err, decodedToken) => {
+      if (err) {
+        next({ status: 401, message: "Token invalid"});
+      }
+      else {
+        req.decodedToken = decodedToken;
+        next();
+      }
+    })
+  }
 }
 
 const only = role_name => (req, res, next) => {
@@ -30,7 +46,8 @@ const only = role_name => (req, res, next) => {
 
     Pull the decoded token from the req object, to avoid verifying it again!
   */
-  if (role_name !== req.role_name) {
+ const decodedToken = req.decodedToken;
+  if (!decodedToken || decodedToken.role_name !== role_name) {
     res.status(403).json({message: "This is not for you"})
   }
   else {
@@ -55,7 +72,7 @@ const checkUsernameExists = (req, res, next) => {
         next();
       }
       else {
-        res.status(401).message({ "message": "Invalid credentials" })
+        res.status(401).json({ "message": "Invalid credentials" })
       }
     })
 }
