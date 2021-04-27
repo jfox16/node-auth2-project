@@ -1,6 +1,8 @@
 const { JWT_SECRET } = require("../secrets"); // use this secret!
+const User = require("../users/users-model");
+const jwt = require('jsonwebtoken');
 
-const restricted = (req, res, next) => {
+const restricted = async (req, res, next) => {
   /*
     If the user does not provide a token in the Authorization header:
     status 401
@@ -16,6 +18,21 @@ const restricted = (req, res, next) => {
 
     Put the decoded token in the req object, to make life easier for middlewares downstream!
   */
+  const token = req.headers.authorization;
+  if (!token) {
+    next({ status:401, message: 'Token required'});
+  }
+  else {
+    jwt.verify(token, JWT_SECRET, (err, decodedToken) => {
+      if (err) {
+        next({ status: 401, message: "Token invalid"});
+      }
+      else {
+        req.decodedToken = decodedToken;
+        next();
+      }
+    })
+  }
 }
 
 const only = role_name => (req, res, next) => {
@@ -29,6 +46,13 @@ const only = role_name => (req, res, next) => {
 
     Pull the decoded token from the req object, to avoid verifying it again!
   */
+ const decodedToken = req.decodedToken;
+  if (!decodedToken || decodedToken.role_name !== role_name) {
+    res.status(403).json({message: "This is not for you"})
+  }
+  else {
+    next();
+  }
 }
 
 
@@ -40,6 +64,17 @@ const checkUsernameExists = (req, res, next) => {
       "message": "Invalid credentials"
     }
   */
+  User.findBy({ username: req.body.username })
+    .then(users => {
+      const user = users[0];
+      if (user) {
+        req.user = user;
+        next();
+      }
+      else {
+        res.status(401).json({ "message": "Invalid credentials" })
+      }
+    })
 }
 
 
@@ -62,6 +97,21 @@ const validateRoleName = (req, res, next) => {
       "message": "Role name can not be longer than 32 chars"
     }
   */
+  const role_name = req.body.role_name;
+  if (role_name === undefined || role_name.trim() === '') {
+    req.role_name = 'student';
+    next();
+  }
+  else if (role_name.trim() === 'admin') {
+    res.status(422).json({ "message": "Role name can not be admin" })
+  }
+  else if (role_name.trim().length > 32) {
+    res.status(422).json({ "message": "Role name can not be longer than 32 chars" })
+  }
+  else {
+    req.role_name = role_name.trim();
+    next();
+  }
 }
 
 module.exports = {
